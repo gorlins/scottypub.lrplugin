@@ -6,7 +6,7 @@ return {
 
     LrExportMenuItems = {
         title = "Setup SmugMug Collections",
-        file = "ExportMenuItem.lua",
+        file = "SetupSmugmugCollections.lua",
     },
 
     --LrLibraryMenuItems = {
