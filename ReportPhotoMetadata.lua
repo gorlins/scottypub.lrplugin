@@ -78,8 +78,8 @@ function MyHWExportItem.report_photo_metadata()
     local photo = catalog:getTargetPhoto()
 
     local common_fields = {'dateTimeOriginal', 'dateTimeDigitized', 'dateTime'}
-    local raw_meta = catalog:batchGetRawMetadata({photo}, concat(common_fields, {'dateTimeOriginalISO8601', 'dateTimeDigitizedISO8601', 'dateTimeISO8601', 'gps', 'path'}))[photo]
-    local formatted_meta = catalog:batchGetFormattedMetadata({photo}, concat(common_fields, {'dateCreated', 'preservedFileName', 'folderName'}))[photo]
+    local raw_meta = catalog:batchGetRawMetadata({photo}, concat(common_fields, {'dateTimeOriginalISO8601', 'dateTimeDigitizedISO8601', 'dateTimeISO8601', 'gps', 'path', 'fileFormat'}))[photo]
+    local formatted_meta = catalog:batchGetFormattedMetadata({photo}, concat(common_fields, {'dateCreated', 'preservedFileName', 'folderName', 'fileType'}))[photo]
 
     -- process raw common just to make readable
     for i, v in ipairs(common_fields) do

@@ -13,6 +13,32 @@ myLogger:enable( "print" ) -- or "logfile"
 
 MyHWExportItem = {}
 
+function table_print (tt, indent, done)
+    done = done or {}
+    indent = indent or 0
+    if type(tt) == "table" then
+      local sb = {}
+      for key, value in pairs (tt) do
+        table.insert(sb, string.rep (" ", indent)) -- indent it
+        if type (value) == "table" and not done [value] then
+          done [value] = true
+          table.insert(sb, "{\n");
+          table.insert(sb, table_print (value, indent + 2, done))
+          table.insert(sb, string.rep (" ", indent)) -- indent it
+          table.insert(sb, "}\n");
+        elseif "number" == type(key) then
+          table.insert(sb, string.format("\"%s\"\n", tostring(value)))
+        else
+          table.insert(sb, string.format(
+              "%s = \"%s\"\n", tostring (key), tostring(value)))
+         end
+      end
+      return table.concat(sb)
+    else
+      return tt .. "\n"
+    end
+end
+
 -- function groupMessages(array)
 --     result = {};
 --     for k, v in ipairs(array) do
@@ -91,6 +117,7 @@ function MyHWExportItem.reorganize_by_time()
         local base_path = target_folder:getPath()
         local filenamePresets = LrApplication.filenamePresets()
         local filename_preset = filenamePresets['ISO8601']
+        local scotty_preset = filenamePresets['ScottyG']
     
         local photos = target_folder:getPhotos(true)
         -- local photos = catalog:getTargetPhotos()
@@ -106,7 +133,7 @@ function MyHWExportItem.reorganize_by_time()
         progress:setCancelable( true )
         index_progress:setCancelable( true )
 
-        local raw_metadata = catalog:batchGetRawMetadata( photos, {'gps', 'pickStatus', 'path', 'fileFormat', 'dimensions', 'isVirtualCopy', 'dateTimeOriginal'} )
+        local raw_metadata = catalog:batchGetRawMetadata( photos, {'gps', 'pickStatus', 'path', 'fileFormat', 'dimensions', 'isVirtualCopy', 'dateTimeOriginal', 'isVideo', 'dateTimeDigitized', 'dateTimeDigitizedISO8601'} )
         local formatted_metadata = catalog:batchGetFormattedMetadata(photos, {'dateCreated', 'preservedFileName', 'gps', 'folderName'})
 
         function has_gps(photo)
@@ -166,10 +193,11 @@ function MyHWExportItem.reorganize_by_time()
                 local dd = meta['dateTimeDigitizedISO8601']
                 local dto = meta['dateTimeOriginal']
                 local time_key = nil
+                local raw_time = meta['dateTimeDigitized']
                 if (
                     dc ~= nil and dc ~= ''
                 ) then
-                    time_key = dc:gsub(':', '-') -- to conform with preset which cannot use :
+                    time_key = dc
                 elseif (dd ~= nil and dd ~= '') then
                     time_key = dd
                 else
@@ -179,9 +207,12 @@ function MyHWExportItem.reorganize_by_time()
                     -- photo:setRawMetadata('colorNameForLabel', 'purple')
                 end
 
-                if (dto ~= nil and not is_estimated_dt(meta['dateTimeOriginal'])) and time_key ~= nil then
-                    local key = time_key .. meta['fileFormat'] --.. fm['preservedFileName']
-                    
+                -- skip DNG because cameras are faster (more FP) and also because they're more likely
+                -- imported correctly
+                if (meta['fileFormat'] ~= 'DNG') and (raw_time ~= nil and not is_estimated_dt(raw_time)) and time_key ~= nil then
+                    -- to conform with preset which cannot use
+                    -- time_key = time_key.gsub(':', '-')
+                    local key = time_key .. tostring(meta['isVideo']) --.. fm['preservedFileName']
                     -- Insert into index by target filename
                     if not dupes[key] then
                         dupes[key] = {}
@@ -220,12 +251,10 @@ function MyHWExportItem.reorganize_by_time()
             -- else
             --     -- dest = LrFileUtils.chooseUniqueFileName(LrPathUtils.addExtension(target_relative, LrPathUtils.extension(current_relative)))
             --     -- dest_path = LrPathUtils.makeAbsolute(dest, base_path)
-            --     -- LrDialogs.message(current_relative, dest, "info")
             --     moved = moved + 1
             --     -- break
             --     photo:setRawMetadata('colorNameForLabel', 'red')
             --     -- Note moving does not ensure photo is recognized by LR catalog!  Seems not possible in API
-            --     -- LrDialogs.message(current_path, dest_path, "info")
             --     -- break
             --     -- LrFileUtils.createAllDirectories( dest_path )
             --     -- LrFileUtils.move( current_path, dest_path )
@@ -237,7 +266,6 @@ function MyHWExportItem.reorganize_by_time()
 
         local collection_progress = LrProgressScope({caption = "Creating dupes collection", parent=progress})
 
-        -- LrDialogs.message("Done creating index", "Found " .. tostring(total_uniques) .. " unique photos", "info")
         local i = 0
         for key, dupe_photos in pairs(dupes) do
 
@@ -261,8 +289,13 @@ function MyHWExportItem.reorganize_by_time()
                     local filtered = flag_and_filter_if_any(not_cropped, dupe_photos, 'yellow')
                     
                     -- Look for any w/ GPS coords
-                    -- LrDialogs.message('adsfff', tostring(has_gps(fullsize[1])) .. tostring(has_gps(fullsize[1])) .. tostring(#fullsize), 'info')
                     filtered = flag_and_filter_if_any(has_gps, filtered, 'blue')
+
+                    -- take HEIC over jpg
+                    function is_heic(photo)
+                        return raw_metadata[photo]['fileFormat'] == 'HEIC'
+                    end
+                    filtered = flag_and_filter_if_any(is_heic, filtered, 'purple')
 
                     -- See which are in the wrong folder
                     function correct_date_folder(photo)
@@ -273,20 +306,31 @@ function MyHWExportItem.reorganize_by_time()
                     end
                     filtered = flag_and_filter_if_any(correct_date_folder, filtered, 'red')
 
-                    -- Unset color for the rest
-                    for i, p in ipairs(filtered) do
-                        p:setRawMetadata('colorNameForLabel', 'none')
+                    -- By default, get rid of any w/o exactly correct filename
+                    function correct_file_name(photo)
+                        local fn = LrPathUtils.leafName(raw_metadata[photo]['path'])
+                        local target_name = photo:getNameViaPreset( scotty_preset, '', 0 ) 
+
+                        return LrPathUtils.removeExtension(fn) == target_name
+                    end
+                    filtered = flag_and_filter_if_any(correct_file_name, filtered, 'green')
+
+                    -- Arbitrarily unset color for the first remaining, and flag the rest
+                    for fi, p in ipairs(filtered) do
+                        if fi == 1 then
+                            p:setRawMetadata('colorNameForLabel', 'none')
+                        else
+                            p:setRawMetadata('colorNameForLabel', 'green')
+                        end
                     end
 
                     -- Add all dupes to collection
                     dupe_collection:addPhotos(dupe_photos)
-                    -- LrDialogs.message("Adding dupes", "Key: " .. key .. " has " .. tostring(#photos), "info")
                     -- break
                 end
             end
             i = i + 1
         end
-        -- LrDialogs.message('asdf', tostring(i), 'info')
     end )
 end
 
