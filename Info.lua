@@ -10,8 +10,12 @@ return {
             file = "SetupSmugmugCollections.lua",
         },
         { 
-            title = "Reorganize by timestamp", 
+            title = "Detect Duplicates", 
             file = "ReorganizeByTime.lua",
+        },
+        { 
+            title = "Report Photo Meta", 
+            file = "ReportPhotoMetadata.lua",
         },
     },
 
