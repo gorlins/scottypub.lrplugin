@@ -5,8 +5,18 @@ return {
     LrPluginName = LOC "$$$/PluginInfo/Name=ScottyGee",
 
     LrExportMenuItems = {
-        title = "Setup SmugMug Collections",
-        file = "ExportMenuItem.lua",
+        {
+            title = "Setup SmugMug Collections",
+            file = "SetupSmugmugCollections.lua",
+        },
+        { 
+            title = "Detect Duplicates", 
+            file = "ReorganizeByTime.lua",
+        },
+        { 
+            title = "Report Photo Meta", 
+            file = "ReportPhotoMetadata.lua",
+        },
     },
 
     --LrLibraryMenuItems = {
